@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="{{ 'de' if lang == 'de' else 'pl' }}">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{{ "Tischtennisturnier" if lang=="de" else "Turniej TT" }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+{% set t = {
+  "pl": {
+    "title": "Turniej TT (każdy z każdym) — do 2 wygranych setów",
+    "reset": "Reset",
+    "reset_confirm": "Na pewno skasować wszystkich zawodników i mecze?",
+    "players": "Zawodnicy",
+    "name_placeholder": "Imię / nick",
+    "add": "Dodaj",
+    "no_players": "Brak zawodników.",
+
+    "table": "Tabela",
+    "th_player": "Zawodnik",
+    "th_points": "Pkt",
+    "th_played": "M",
+    "th_wins": "W",
+    "th_losses": "P",
+    "th_sets": "Sety",
+    "th_sets_diff": "+/- sety",
+    "th_ball": "Małe pkt",
+    "th_ball_diff": "+/- pkt",
+    "no_data": "Dodaj zawodników i mecze, żeby zobaczyć tabelę.",
+    "sorting": "Sortowanie: punkty → wygrane → różnica setów → różnica małych punktów → małe punkty zdobyte → (remis 2 osób) bezpośredni mecz. Punkty: 2 za wygraną, 0 za porażkę.",
+
+    "schedule": "Terminarz (20 dni meczowych)",
+    "generate_schedule": "Generuj terminarz",
+    "day": "dzień meczowy",
+    "upcoming": "Nierozegrane",
+    "played_lbl": "Rozegrane",
+    "set_points_hint": "Wpisz punkty w setach (Best of 3). Set 3 tylko przy 1:1.",
+    "enter_result": "Wpisz wynik",
+    "edit_result": "Edytuj wynik",
+
+    "set1": "Set 1",
+    "set2": "Set 2",
+    "set3": "Set 3 (tylko jeśli 1:1)",
+
+    "recent": "Ostatnie mecze",
+    "th_match": "Mecz",
+    "th_sets_short": "Sety",
+    "th_set_points": "Małe punkty (sety)",
+    "th_sum_points": "Suma pkt",
+    "th_actions": "Akcje",
+    "delete": "Usuń",
+    "delete_confirm": "Usunąć ten mecz?",
+    "no_matches": "Brak meczów."
+  },
+  "de": {
+    "title": "Tischtennisturnier (Jeder gegen jeden) – Best of 3",
+    "reset": "Zurücksetzen",
+    "reset_confirm": "Wirklich alle Spieler und Spiele löschen?",
+    "players": "Spieler",
+    "name_placeholder": "Name / Spitzname",
+    "add": "Hinzufügen",
+    "no_players": "Keine Spieler vorhanden.",
+
+    "table": "Tabelle",
+    "th_player": "Spieler",
+    "th_points": "Punkte",
+    "th_played": "Sp",
+    "th_wins": "S",
+    "th_losses": "N",
+    "th_sets": "Sätze",
+    "th_sets_diff": "+/- Sätze",
+    "th_ball": "Ballpunkte",
+    "th_ball_diff": "+/- Punkte",
+    "no_data": "Fügen Sie Spieler und Ergebnisse hinzu, um die Tabelle zu sehen.",
+    "sorting": "Sortierung: Punkte → Siege → Satzdifferenz → Punktedifferenz → erzielte Punkte → (Gleichstand von 2) direkter Vergleich. Punkte: 2 für Sieg, 0 für Niederlage.",
+
+    "schedule": "Spielplan (20 Spieltage)",
+    "generate_schedule": "Spielplan erzeugen",
+    "day": "Spieltag",
+    "upcoming": "Nicht gespielt",
+    "played_lbl": "Gespielt",
+    "set_points_hint": "Punkte pro Satz eintragen (Best of 3). Satz 3 nur bei 1:1.",
+    "enter_result": "Ergebnis eintragen",
+    "edit_result": "Ergebnis bearbeiten",
+
+    "set1": "Satz 1",
+    "set2": "Satz 2",
+    "set3": "Satz 3 (nur bei 1:1)",
+
+    "recent": "Letzte Spiele",
+    "th_match": "Spiel",
+    "th_sets_short": "Sätze",
+    "th_set_points": "Ballpunkte (Sätze)",
+    "th_sum_points": "Summe Punkte",
+    "th_actions": "Aktionen",
+    "delete": "Löschen",
+    "delete_confirm": "Dieses Spiel löschen?",
+    "no_matches": "Keine Spiele vorhanden."
+  }
+} %}
+{% set L = t[lang] %}
+
+<div class="container py-4">
+  <div class="d-flex align-items-center justify-content-between mb-3 gap-2 flex-wrap">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <h1 class="h3 mb-0">{{ L.title }}</h1>
+      <div class="btn-group" role="group" aria-label="Language switch">
+        <a class="btn btn-sm {{ 'btn-dark' if lang=='pl' else 'btn-outline-dark' }}" href="/?lang=pl">PL</a>
+        <a class="btn btn-sm {{ 'btn-dark' if lang=='de' else 'btn-outline-dark' }}" href="/?lang=de">DE</a>
+      </div>
+    </div>
+
+    <form method="post" action="/reset" onsubmit="return confirm('{{ L.reset_confirm }}')">
+      <button class="btn btn-outline-danger btn-sm">{{ L.reset }}</button>
+    </form>
+  </div>
+
+  <div class="row g-3">
+    <!-- LEWA -->
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">{{ L.players }}</h2>
+          <form method="post" action="/players/add" class="d-flex gap-2 mb-3">
+            <input class="form-control" name="name" placeholder="{{ L.name_placeholder }}" required>
+            <button class="btn btn-primary">{{ L.add }}</button>
+          </form>
+
+          <ul class="list-group">
+            {% for p in players %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                {{ p.name }}
+                <span class="badge text-bg-secondary">ID {{ p.id }}</span>
+              </li>
+            {% else %}
+              <li class="list-group-item text-muted">{{ L.no_players }}</li>
+            {% endfor %}
+          </ul>
+
+          <hr class="my-3">
+
+          <form method="post" action="/schedule/generate" class="d-grid gap-2">
+            <input type="hidden" name="days" value="20">
+            <button class="btn btn-success">{{ L.generate_schedule }}</button>
+          </form>
+          <div class="form-text mt-2">
+            {{ L.set_points_hint }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRAWA -->
+    <div class="col-lg-8">
+      <!-- TABELA -->
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">{{ L.table }}</h2>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>{{ L.th_player }}</th>
+                  <th class="text-end">{{ L.th_points }}</th>
+                  <th class="text-end">{{ L.th_played }}</th>
+                  <th class="text-end">{{ L.th_wins }}</th>
+                  <th class="text-end">{{ L.th_losses }}</th>
+                  <th class="text-end">{{ L.th_sets }}</th>
+                  <th class="text-end">{{ L.th_sets_diff }}</th>
+                  <th class="text-end">{{ L.th_ball }}</th>
+                  <th class="text-end">{{ L.th_ball_diff }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in table %}
+                  <tr>
+                    <td>{{ r.rank }}</td>
+                    <td>{{ r.name }}</td>
+                    <td class="text-end fw-bold">{{ r.points }}</td>
+                    <td class="text-end">{{ r.played }}</td>
+                    <td class="text-end">{{ r.wins }}</td>
+                    <td class="text-end">{{ r.losses }}</td>
+                    <td class="text-end">{{ r.sets_for }}:{{ r.sets_against }}</td>
+                    <td class="text-end">{{ r.sets_diff }}</td>
+                    <td class="text-end">{{ r.pts_for }}:{{ r.pts_against }}</td>
+                    <td class="text-end">{{ r.pts_diff }}</td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="10" class="text-muted">{{ L.no_data }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="alert alert-secondary mb-0">{{ L.sorting }}</div>
+        </div>
+      </div>
+
+      <!-- TERMINARZ -->
+      <div class="card mt-3">
+        <div class="card-body">
+          <h2 class="h5 mb-2">{{ L.schedule }}</h2>
+
+          {% if schedule_days and schedule_days|length > 0 %}
+            <div class="accordion" id="schedAcc">
+              {% for day_no, games in schedule_days %}
+                <div class="accordion-item">
+                  <h2 class="accordion-header" id="h{{ day_no }}">
+                    <button class="accordion-button {{ '' if day_no == 1 else 'collapsed' }}" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#c{{ day_no }}"
+                            aria-expanded="{{ 'true' if day_no == 1 else 'false' }}" aria-controls="c{{ day_no }}">
+                      {{ day_no }}. {{ L.day }} — {{ games|length }} {{ L.th_match if lang=='pl' else 'Spiele' }}
+                    </button>
+                  </h2>
+                  <div id="c{{ day_no }}" class="accordion-collapse collapse {{ 'show' if day_no == 1 else '' }}"
+                       aria-labelledby="h{{ day_no }}" data-bs-parent="#schedAcc">
+                    <div class="accordion-body">
+
+                      <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                          <thead>
+                            <tr>
+                              <th>{{ L.th_match }}</th>
+                              <th class="text-end">{{ L.th_sets_short }}</th>
+                              <th class="text-end">{{ L.th_set_points }}</th>
+                              <th style="min-width:520px;"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                          {% for g in games %}
+                            <tr>
+                              <td>
+                                <div class="fw-semibold">{{ g.p1_name }} vs {{ g.p2_name }}</div>
+                                <div class="text-muted small">
+                                  {% if g.played %}{{ L.played_lbl }}{% else %}{{ L.upcoming }}{% endif %}
+                                </div>
+                              </td>
+
+                              <td class="text-end">
+                                {% if g.played %}
+                                  <span class="fw-semibold">{{ g.p1_sets }}:{{ g.p2_sets }}</span>
+                                {% else %}
+                                  <span class="text-muted">—</span>
+                                {% endif %}
+                              </td>
+
+                              <td class="text-end">
+                                {% if g.played %}
+                                  <div class="text-muted">{{ g.sets_detail }}</div>
+                                  <div class="small">{{ g.p1_points }}:{{ g.p2_points }}</div>
+                                {% else %}
+                                  <span class="text-muted">—</span>
+                                {% endif %}
+                              </td>
+
+                              <td>
+                                <form method="post" action="/matches/add" class="row g-1">
+                                  <input type="hidden" name="p1_id" value="{{ g.p1_id }}">
+                                  <input type="hidden" name="p2_id" value="{{ g.p2_id }}">
+
+                                  <div class="col-4">
+                                    <input class="form-control form-control-sm" type="number" name="s1a" min="0"
+                                           placeholder="{{ L.set1 }} A" value="{{ g.s1a }}" required>
+                                  </div>
+                                  <div class="col-4">
+                                    <input class="form-control form-control-sm" type="number" name="s1b" min="0"
+                                           placeholder="{{ L.set1 }} B" value="{{ g.s1b }}" required>
+                                  </div>
+                                  <div class="col-4"></div>
+
+                                  <div class="col-4">
+                                    <input class="form-control form-control-sm" type="number" name="s2a" min="0"
+                                           placeholder="{{ L.set2 }} A" value="{{ g.s2a }}" required>
+                                  </div>
+                                  <div class="col-4">
+                                    <input class="form-control form-control-sm" type="number" name="s2b" min="0"
+                                           placeholder="{{ L.set2 }} B" value="{{ g.s2b }}" required>
+                                  </div>
+                                  <div class="col-4"></div>
+
+                                  <div class="col-4">
+                                    <input class="form-control form-control-sm" type="number" name="s3a" min="0"
+                                           placeholder="{{ L.set3 }} A" value="{{ g.s3a }}">
+                                  </div>
+                                  <div class="col-4">
+                                    <input class="form-control form-control-sm" type="number" name="s3b" min="0"
+                                           placeholder="{{ L.set3 }} B" value="{{ g.s3b }}">
+                                  </div>
+
+                                  <div class="col-4 d-grid">
+                                    <button class="btn btn-sm {{ 'btn-outline-primary' if g.played else 'btn-primary' }}">
+                                      {% if g.played %}{{ L.edit_result }}{% else %}{{ L.enter_result }}{% endif %}
+                                    </button>
+                                  </div>
+                                </form>
+                              </td>
+                            </tr>
+                          {% endfor %}
+                          </tbody>
+                        </table>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-muted">
+              {% if lang == 'pl' %}
+                Brak terminarza. Dodaj zawodników i kliknij „Generuj terminarz”.
+              {% else %}
+                Kein Spielplan. Spieler hinzufügen und „Spielplan erzeugen” klicken.
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- OSTATNIE MECZE -->
+      <div class="card mt-3">
+        <div class="card-body">
+          <h2 class="h5">{{ L.recent }}</h2>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>{{ L.th_match }}</th>
+                  <th class="text-end">{{ L.th_sets_short }}</th>
+                  <th class="text-end">{{ L.th_set_points }}</th>
+                  <th class="text-end">{{ L.th_sum_points }}</th>
+                  <th class="text-end">{{ L.th_actions }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in matches %}
+                <tr>
+                  <td>{{ m.p1_name }} vs {{ m.p2_name }}</td>
+                  <td class="text-end fw-semibold">{{ m.p1_sets }}:{{ m.p2_sets }}</td>
+                  <td class="text-end text-muted">{{ m.sets_detail }}</td>
+                  <td class="text-end">{{ m.p1_points }}:{{ m.p2_points }}</td>
+                  <td class="text-end">
+                    <form method="post" action="/matches/delete" onsubmit="return confirm('{{ L.delete_confirm }}')">
+                      <input type="hidden" name="match_id" value="{{ m.id }}">
+                      <button class="btn btn-outline-danger btn-sm">{{ L.delete }}</button>
+                    </form>
+                  </td>
+                </tr>
+                {% else %}
+                  <tr><td colspan="5" class="text-muted">{{ L.no_matches }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
