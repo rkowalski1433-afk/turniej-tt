@@ -12,12 +12,11 @@
   "pl": {
     "title": "Turniej TT (każdy z każdym) — do 2 wygranych setów",
     "reset": "Reset",
-    "reset_confirm": "Na pewno skasować wszystkich zawodników i mecze?",
+    "reset_confirm": "Na pewno skasować wszystkich zawodników, mecze i terminarz?",
     "players": "Zawodnicy",
     "name_placeholder": "Imię / nick",
     "add": "Dodaj",
     "no_players": "Brak zawodników.",
-
     "table": "Tabela",
     "th_player": "Zawodnik",
     "th_points": "Pkt",
@@ -29,21 +28,18 @@
     "th_ball": "Małe pkt",
     "th_ball_diff": "+/- pkt",
     "no_data": "Dodaj zawodników i mecze, żeby zobaczyć tabelę.",
-    "sorting": "Sortowanie: punkty → wygrane → różnica setów → różnica małych punktów → małe punkty zdobyte → (remis 2 osób) bezpośredni mecz. Punkty: 2 za wygraną, 0 za porażkę.",
-
+    "sorting": "Sortowanie: punkty → wygrane → różnica setów → różnica małych punktów → małe punkty zdobyte → bezpośredni mecz (przy remisie 2 osób). Punkty: 2 za wygraną, 0 za porażkę.",
     "schedule": "Terminarz (20 dni meczowych)",
     "generate_schedule": "Generuj terminarz",
     "day": "dzień meczowy",
     "upcoming": "Nierozegrane",
     "played_lbl": "Rozegrane",
-    "set_points_hint": "Wpisz punkty w setach (Best of 3). Set 3 tylko przy 1:1.",
+    "set_points_hint": "Wpisz punkty w setach (Best of 3). Set 3 tylko przy wyniku 1:1 w setach.",
     "enter_result": "Wpisz wynik",
     "edit_result": "Edytuj wynik",
-
     "set1": "Set 1",
     "set2": "Set 2",
-    "set3": "Set 3 (tylko jeśli 1:1)",
-
+    "set3": "Set 3",
     "recent": "Ostatnie mecze",
     "th_match": "Mecz",
     "th_sets_short": "Sety",
@@ -52,17 +48,19 @@
     "th_actions": "Akcje",
     "delete": "Usuń",
     "delete_confirm": "Usunąć ten mecz?",
-    "no_matches": "Brak meczów."
+    "no_matches": "Brak meczów.",
+    "admin_password": "Hasło organizatora",
+    "admin_placeholder": "tylko do edycji",
+    "admin_help": "Bez hasła: tylko podgląd. Z hasłem: dodawanie zawodników, generowanie terminarza i wpisywanie wyników."
   },
   "de": {
     "title": "Tischtennisturnier (Jeder gegen jeden) – Best of 3",
     "reset": "Zurücksetzen",
-    "reset_confirm": "Wirklich alle Spieler und Spiele löschen?",
+    "reset_confirm": "Wirklich alle Spieler, Spiele und den Spielplan löschen?",
     "players": "Spieler",
     "name_placeholder": "Name / Spitzname",
     "add": "Hinzufügen",
     "no_players": "Keine Spieler vorhanden.",
-
     "table": "Tabelle",
     "th_player": "Spieler",
     "th_points": "Punkte",
@@ -74,21 +72,18 @@
     "th_ball": "Ballpunkte",
     "th_ball_diff": "+/- Punkte",
     "no_data": "Fügen Sie Spieler und Ergebnisse hinzu, um die Tabelle zu sehen.",
-    "sorting": "Sortierung: Punkte → Siege → Satzdifferenz → Punktedifferenz → erzielte Punkte → (Gleichstand von 2) direkter Vergleich. Punkte: 2 für Sieg, 0 für Niederlage.",
-
+    "sorting": "Sortierung: Punkte → Siege → Satzdifferenz → Punktedifferenz → erzielte Punkte → direkter Vergleich (bei Gleichstand von 2). Punkte: 2 für Sieg, 0 für Niederlage.",
     "schedule": "Spielplan (20 Spieltage)",
     "generate_schedule": "Spielplan erzeugen",
     "day": "Spieltag",
     "upcoming": "Nicht gespielt",
     "played_lbl": "Gespielt",
-    "set_points_hint": "Punkte pro Satz eintragen (Best of 3). Satz 3 nur bei 1:1.",
+    "set_points_hint": "Punkte pro Satz eintragen (Best of 3). Satz 3 nur bei 1:1 nach Sätzen.",
     "enter_result": "Ergebnis eintragen",
     "edit_result": "Ergebnis bearbeiten",
-
     "set1": "Satz 1",
     "set2": "Satz 2",
-    "set3": "Satz 3 (nur bei 1:1)",
-
+    "set3": "Satz 3",
     "recent": "Letzte Spiele",
     "th_match": "Spiel",
     "th_sets_short": "Sätze",
@@ -97,7 +92,10 @@
     "th_actions": "Aktionen",
     "delete": "Löschen",
     "delete_confirm": "Dieses Spiel löschen?",
-    "no_matches": "Keine Spiele vorhanden."
+    "no_matches": "Keine Spiele vorhanden.",
+    "admin_password": "Admin-Passwort",
+    "admin_placeholder": "nur für Eingaben",
+    "admin_help": "Ohne Passwort: nur Ansicht. Mit Passwort: Spieler hinzufügen, Spielplan erzeugen und Ergebnisse eintragen."
   }
 } %}
 {% set L = t[lang] %}
@@ -113,17 +111,36 @@
     </div>
 
     <form method="post" action="/reset" onsubmit="return confirm('{{ L.reset_confirm }}')">
+      <input type="hidden" name="admin_password" class="admin-password-field" value="">
+      <input type="hidden" name="lang" value="{{ lang }}">
       <button class="btn btn-outline-danger btn-sm">{{ L.reset }}</button>
     </form>
   </div>
 
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <div class="row g-2 align-items-center">
+        <div class="col-auto fw-semibold">
+          {{ L.admin_password }}
+        </div>
+        <div class="col-sm-4">
+          <input id="adminPw" type="password" class="form-control form-control-sm" placeholder="{{ L.admin_placeholder }}">
+        </div>
+        <div class="col text-muted small">
+          {{ L.admin_help }}
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row g-3">
-    <!-- LEWA -->
     <div class="col-lg-4">
       <div class="card">
         <div class="card-body">
           <h2 class="h5">{{ L.players }}</h2>
           <form method="post" action="/players/add" class="d-flex gap-2 mb-3">
+            <input type="hidden" name="admin_password" class="admin-password-field" value="">
+            <input type="hidden" name="lang" value="{{ lang }}">
             <input class="form-control" name="name" placeholder="{{ L.name_placeholder }}" required>
             <button class="btn btn-primary">{{ L.add }}</button>
           </form>
@@ -142,9 +159,12 @@
           <hr class="my-3">
 
           <form method="post" action="/schedule/generate" class="d-grid gap-2">
+            <input type="hidden" name="admin_password" class="admin-password-field" value="">
+            <input type="hidden" name="lang" value="{{ lang }}">
             <input type="hidden" name="days" value="20">
             <button class="btn btn-success">{{ L.generate_schedule }}</button>
           </form>
+
           <div class="form-text mt-2">
             {{ L.set_points_hint }}
           </div>
@@ -152,9 +172,7 @@
       </div>
     </div>
 
-    <!-- PRAWA -->
     <div class="col-lg-8">
-      <!-- TABELA -->
       <div class="card">
         <div class="card-body">
           <h2 class="h5">{{ L.table }}</h2>
@@ -198,7 +216,6 @@
         </div>
       </div>
 
-      <!-- TERMINARZ -->
       <div class="card mt-3">
         <div class="card-body">
           <h2 class="h5 mb-2">{{ L.schedule }}</h2>
@@ -257,6 +274,8 @@
 
                               <td>
                                 <form method="post" action="/matches/add" class="row g-1">
+                                  <input type="hidden" name="admin_password" class="admin-password-field" value="">
+                                  <input type="hidden" name="lang" value="{{ lang }}">
                                   <input type="hidden" name="p1_id" value="{{ g.p1_id }}">
                                   <input type="hidden" name="p2_id" value="{{ g.p2_id }}">
 
@@ -319,7 +338,6 @@
         </div>
       </div>
 
-      <!-- OSTATNIE MECZE -->
       <div class="card mt-3">
         <div class="card-body">
           <h2 class="h5">{{ L.recent }}</h2>
@@ -343,6 +361,8 @@
                   <td class="text-end">{{ m.p1_points }}:{{ m.p2_points }}</td>
                   <td class="text-end">
                     <form method="post" action="/matches/delete" onsubmit="return confirm('{{ L.delete_confirm }}')">
+                      <input type="hidden" name="admin_password" class="admin-password-field" value="">
+                      <input type="hidden" name="lang" value="{{ lang }}">
                       <input type="hidden" name="match_id" value="{{ m.id }}">
                       <button class="btn btn-outline-danger btn-sm">{{ L.delete }}</button>
                     </form>
@@ -362,5 +382,16 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  const adminPw = document.getElementById("adminPw");
+  function syncPw() {
+    const val = adminPw ? adminPw.value : "";
+    document.querySelectorAll(".admin-password-field").forEach(el => el.value = val);
+  }
+  if (adminPw) {
+    adminPw.addEventListener("input", syncPw);
+    syncPw();
+  }
+</script>
 </body>
 </html>

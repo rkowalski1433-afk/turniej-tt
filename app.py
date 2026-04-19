@@ -1,12 +1,13 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import sqlite3
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from itertools import combinations
+import os
 
-
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 DB_PATH = Path("tt.db")
 
@@ -18,6 +19,13 @@ def db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def require_admin(password: str | None):
+    if not ADMIN_PASSWORD:
+        return
+    if (password or "") != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, col: str) -> bool:
@@ -50,7 +58,6 @@ def init_db() -> None:
         )
     """)
 
-    # Migracje: małe punkty + zapis setów
     if not _column_exists(conn, "matches", "p1_points"):
         cur.execute("ALTER TABLE matches ADD COLUMN p1_points INTEGER NOT NULL DEFAULT 0")
     if not _column_exists(conn, "matches", "p2_points"):
@@ -58,7 +65,6 @@ def init_db() -> None:
     if not _column_exists(conn, "matches", "sets_detail"):
         cur.execute("ALTER TABLE matches ADD COLUMN sets_detail TEXT NOT NULL DEFAULT ''")
 
-    # NOWE: terminarz
     cur.execute("""
         CREATE TABLE IF NOT EXISTS schedule (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,21 +102,26 @@ def get_matches(conn: sqlite3.Connection) -> List[sqlite3.Row]:
     """).fetchall()
 
 
+def get_schedule(conn: sqlite3.Connection):
+    return conn.execute("""
+        SELECT s.id, s.day_no, s.order_in_day,
+               s.p1_id, p1.name AS p1_name,
+               s.p2_id, p2.name AS p2_name
+        FROM schedule s
+        JOIN players p1 ON p1.id = s.p1_id
+        JOIN players p2 ON p2.id = s.p2_id
+        ORDER BY s.day_no ASC, s.order_in_day ASC
+    """).fetchall()
+
+
 def normalize_pair(p1_id: int, p2_id: int, payload: Dict) -> Tuple[int, int, Dict]:
-    """
-    Trzymamy w DB parę w ustalonej kolejności (mniejsze ID jako p1),
-    żeby UNIQUE(p1_id, p2_id) działało niezależnie od kolejności wpisu.
-    Jeśli zamieniamy zawodników, musimy też zamienić wynik (sety/punkty i sety_detail).
-    """
     if p1_id < p2_id:
         return p1_id, p2_id, payload
 
-    # swap payload for reversed players
     swapped = dict(payload)
     swapped["p1_sets"], swapped["p2_sets"] = payload["p2_sets"], payload["p1_sets"]
     swapped["p1_points"], swapped["p2_points"] = payload["p2_points"], payload["p1_points"]
 
-    # sets_detail format: "11-7,8-11,11-9" => swap each "a-b" -> "b-a"
     detail = payload.get("sets_detail", "")
     if detail:
         parts = [p.strip() for p in detail.split(",") if p.strip()]
@@ -131,18 +142,10 @@ def parse_sets_best_of_3(
     s2a: Optional[int], s2b: Optional[int],
     s3a: Optional[int], s3b: Optional[int],
 ) -> Optional[Dict]:
-    """
-    Z wejścia (małe punkty per set) buduje:
-    - p1_sets / p2_sets (do 2 wygranych)
-    - p1_points / p2_points (suma małych punktów)
-    - sets_detail (np. "11-7,8-11,11-9")
-    Zwraca None jeśli dane są niepoprawne.
-    """
     raw = [(s1a, s1b), (s2a, s2b), (s3a, s3b)]
 
     sets = []
     for a, b in raw:
-        # set jest wpisany tylko jeśli oba pola są podane
         if a is None and b is None:
             continue
         if a is None or b is None:
@@ -153,7 +156,6 @@ def parse_sets_best_of_3(
             return None
         sets.append((a, b))
 
-    # musi być co najmniej 2 sety, max 3
     if len(sets) < 2 or len(sets) > 3:
         return None
 
@@ -163,7 +165,7 @@ def parse_sets_best_of_3(
     p2_points = 0
     detail_parts = []
 
-    for idx, (a, b) in enumerate(sets, start=1):
+    for a, b in sets:
         p1_points += a
         p2_points += b
         detail_parts.append(f"{a}-{b}")
@@ -173,22 +175,13 @@ def parse_sets_best_of_3(
         else:
             p2_sets += 1
 
-        # best-of-3: kończymy, gdy ktoś ma 2 wygrane sety
-        if p1_sets == 2 or p2_sets == 2:
-            # jeśli ktoś wygrał 2 sety przed 3. setem, a user wpisał jednak 3 set — odrzucamy
-            if idx < len(sets):
-                # tu jeszcze przetwarzamy kolejne sety, więc sprawdzimy po pętli
-                pass
-
-    # warunek: ktoś musi mieć dokładnie 2 wygrane sety
     if not (p1_sets == 2 or p2_sets == 2):
         return None
 
-    # dodatkowa walidacja: jeśli mecz skończył się 2:0, nie powinno być 3 setów
     if (p1_sets == 2 and p2_sets == 0) or (p2_sets == 2 and p1_sets == 0):
         if len(sets) != 2:
             return None
-    # jeśli 2:1, muszą być 3 sety
+
     if (p1_sets == 2 and p2_sets == 1) or (p2_sets == 2 and p1_sets == 1):
         if len(sets) != 3:
             return None
@@ -211,14 +204,14 @@ def compute_table(players: List[sqlite3.Row], matches: List[sqlite3.Row]) -> Lis
             "played": 0,
             "wins": 0,
             "losses": 0,
-            "points": 0,  # 2 za wygraną, 0 za porażkę
+            "points": 0,
             "sets_for": 0,
             "sets_against": 0,
-            "pts_for": 0,      # małe punkty
+            "pts_for": 0,
             "pts_against": 0,
         }
 
-    h2h: Dict[Tuple[int, int], int] = {}  # (a,b)->1 jeśli a wygrał z b, -1 jeśli przegrał
+    h2h: Dict[Tuple[int, int], int] = {}
 
     for m in matches:
         a = m["p1_id"]
@@ -264,13 +257,11 @@ def compute_table(players: List[sqlite3.Row], matches: List[sqlite3.Row]) -> Lis
         s["pts_diff"] = s["pts_for"] - s["pts_against"]
         rows.append(s)
 
-    # sort: punkty, wygrane, różnica setów, różnica małych punktów, małe punkty zdobyte
     def key_base(r: Dict):
         return (r["points"], r["wins"], r["sets_diff"], r["pts_diff"], r["pts_for"])
 
     rows.sort(key=key_base, reverse=True)
 
-    # tie-break: jeśli DWIE osoby remisowe wg key_base => H2H
     i = 0
     while i < len(rows) - 1:
         j = i
@@ -285,19 +276,14 @@ def compute_table(players: List[sqlite3.Row], matches: List[sqlite3.Row]) -> Lis
                 res = h2h.get((a_id, b_id))
                 if res == -1:
                     rows[i], rows[i+1] = rows[i+1], rows[i]
-            # dla remisów 3+ można zrobić „małą tabelę” między zainteresowanymi — dopiszę, jeśli chcesz.
         i = j + 1
 
     for idx, r in enumerate(rows, start=1):
         r["rank"] = idx
     return rows
 
+
 def generate_schedule_fair(player_ids: List[int], days: int = 20, max_matches_per_day: int = 5):
-    """
-    Generuje terminarz na 'days' dni.
-    Zasada: max 1 mecz / zawodnik / dzień.
-    Heurystyka równego czekania: wybieramy pary, które najdłużej nie grały.
-    """
     ids = sorted(player_ids)
     all_matches = {(a, b) for a, b in combinations(ids, 2)}
     scheduled = {d: [] for d in range(1, days + 1)}
@@ -311,7 +297,7 @@ def generate_schedule_fair(player_ids: List[int], days: int = 20, max_matches_pe
 
         remaining = len(all_matches)
         remaining_days = (days - day + 1)
-        target = max(1, round(remaining / remaining_days))  # zwykle 2–3
+        target = max(1, round(remaining / remaining_days))
         target = min(target, max_matches_per_day)
 
         while len(scheduled[day]) < target and all_matches:
@@ -339,7 +325,6 @@ def generate_schedule_fair(player_ids: List[int], days: int = 20, max_matches_pe
             last_played[b] = day
             all_matches.remove((a, b))
 
-    # awaryjnie: jeśli coś zostało, dogrywamy do wolnych slotów
     leftovers = list(all_matches)
     day = 1
     guard = 0
@@ -372,34 +357,6 @@ def _detail_to_fields(detail: str):
     return fields
 
 
-def get_schedule(conn: sqlite3.Connection):
-    return conn.execute("""
-        SELECT s.id, s.day_no, s.order_in_day,
-               s.p1_id, p1.name AS p1_name,
-               s.p2_id, p2.name AS p2_name
-        FROM schedule s
-        JOIN players p1 ON p1.id = s.p1_id
-        JOIN players p2 ON p2.id = s.p2_id
-        ORDER BY s.day_no ASC, s.order_in_day ASC
-    """).fetchall()
-
-
-
-def _detail_to_fields(detail: str):
-    # detail: "11-7,8-11,11-9"
-    fields = {"s1a": "", "s1b": "", "s2a": "", "s2b": "", "s3a": "", "s3b": ""}
-    if not detail:
-        return fields
-    parts = [p.strip() for p in detail.split(",") if p.strip()]
-    for i, part in enumerate(parts[:3], start=1):
-        if "-" not in part:
-            continue
-        a, b = part.split("-", 1)
-        fields[f"s{i}a"] = a.strip()
-        fields[f"s{i}b"] = b.strip()
-    return fields
-
-
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, lang: str = "pl"):
     lang = (lang or "pl").lower()
@@ -411,7 +368,6 @@ def home(request: Request, lang: str = "pl"):
     matches = get_matches(conn)
     table = compute_table(players, matches)
 
-    # map rozegranych wyników po parze (min_id, max_id)
     played_map = {}
     for m in matches:
         a = min(m["p1_id"], m["p2_id"])
@@ -420,7 +376,6 @@ def home(request: Request, lang: str = "pl"):
 
     schedule_rows = get_schedule(conn)
 
-    # grupowanie po dniach
     schedule_days = []
     current_day = None
     current_list = []
@@ -440,8 +395,10 @@ def home(request: Request, lang: str = "pl"):
 
         item = {
             "day_no": r["day_no"],
-            "p1_id": a, "p2_id": b,
-            "p1_name": r["p1_name"], "p2_name": r["p2_name"],
+            "p1_id": a,
+            "p2_id": b,
+            "p1_name": r["p1_name"],
+            "p2_name": r["p2_name"],
             "played": bool(m),
             "p1_sets": m["p1_sets"] if m else "",
             "p2_sets": m["p2_sets"] if m else "",
@@ -466,28 +423,35 @@ def home(request: Request, lang: str = "pl"):
         "schedule_days": schedule_days,
     })
 
+
 @app.post("/schedule/generate")
-def schedule_generate(days: int = Form(20)):
+def schedule_generate(
+    days: int = Form(20),
+    admin_password: str = Form(""),
+    lang: str = Form("pl"),
+):
+    require_admin(admin_password)
+
     if days < 1:
         days = 20
     if days > 60:
         days = 60
 
+    if lang not in ("pl", "de"):
+        lang = "pl"
+
     conn = db()
     players = get_players(conn)
     ids = [p["id"] for p in players]
 
-    # czyścimy poprzedni terminarz
     conn.execute("DELETE FROM schedule")
 
-    # jeśli mniej niż 2 zawodników, nie ma co generować
     if len(ids) >= 2:
-        max_matches_per_day = len(ids) // 2  # dla 11 => 5
+        max_matches_per_day = len(ids) // 2
         sched = generate_schedule_fair(ids, days=days, max_matches_per_day=max_matches_per_day)
 
         for day_no in range(1, days + 1):
             for order, (a, b) in enumerate(sched.get(day_no, []), start=1):
-                # w schedule trzymamy parę w kolejności rosnącej (jak w matches)
                 p1, p2 = (a, b) if a < b else (b, a)
                 conn.execute("""
                     INSERT INTO schedule(day_no, order_in_day, p1_id, p2_id)
@@ -496,14 +460,23 @@ def schedule_generate(days: int = Form(20)):
 
     conn.commit()
     conn.close()
-    return RedirectResponse("/?lang=pl", status_code=303)
+    return RedirectResponse(f"/?lang={lang}", status_code=303)
 
 
 @app.post("/players/add")
-def add_player(name: str = Form(...)):
+def add_player(
+    name: str = Form(...),
+    admin_password: str = Form(""),
+    lang: str = Form("pl"),
+):
+    require_admin(admin_password)
+
+    if lang not in ("pl", "de"):
+        lang = "pl"
+
     name = name.strip()
     if not name:
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(f"/?lang={lang}", status_code=303)
 
     conn = db()
     try:
@@ -513,7 +486,8 @@ def add_player(name: str = Form(...)):
         pass
     finally:
         conn.close()
-    return RedirectResponse("/", status_code=303)
+
+    return RedirectResponse(f"/?lang={lang}", status_code=303)
 
 
 @app.post("/matches/add")
@@ -526,13 +500,20 @@ def add_match(
     s2b: Optional[int] = Form(None),
     s3a: Optional[int] = Form(None),
     s3b: Optional[int] = Form(None),
+    admin_password: str = Form(""),
+    lang: str = Form("pl"),
 ):
+    require_admin(admin_password)
+
+    if lang not in ("pl", "de"):
+        lang = "pl"
+
     if p1_id == p2_id:
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(f"/?lang={lang}", status_code=303)
 
     payload = parse_sets_best_of_3(s1a, s1b, s2a, s2b, s3a, s3b)
     if payload is None:
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(f"/?lang={lang}", status_code=303)
 
     a, b, normalized = normalize_pair(p1_id, p2_id, payload)
 
@@ -548,30 +529,50 @@ def add_match(
             p2_points=excluded.p2_points,
             sets_detail=excluded.sets_detail,
             played_at=CURRENT_TIMESTAMP
-    """, (a, b,
-          normalized["p1_sets"], normalized["p2_sets"],
-          normalized["p1_points"], normalized["p2_points"],
-          normalized["sets_detail"]))
+    """, (
+        a, b,
+        normalized["p1_sets"], normalized["p2_sets"],
+        normalized["p1_points"], normalized["p2_points"],
+        normalized["sets_detail"]
+    ))
     conn.commit()
     conn.close()
 
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(f"/?lang={lang}", status_code=303)
 
 
 @app.post("/matches/delete")
-def delete_match(match_id: int = Form(...)):
+def delete_match(
+    match_id: int = Form(...),
+    admin_password: str = Form(""),
+    lang: str = Form("pl"),
+):
+    require_admin(admin_password)
+
+    if lang not in ("pl", "de"):
+        lang = "pl"
+
     conn = db()
     conn.execute("DELETE FROM matches WHERE id=?", (match_id,))
     conn.commit()
     conn.close()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(f"/?lang={lang}", status_code=303)
 
 
 @app.post("/reset")
-def reset_all():
+def reset_all(
+    admin_password: str = Form(""),
+    lang: str = Form("pl"),
+):
+    require_admin(admin_password)
+
+    if lang not in ("pl", "de"):
+        lang = "pl"
+
     conn = db()
     conn.execute("DELETE FROM matches")
     conn.execute("DELETE FROM players")
+    conn.execute("DELETE FROM schedule")
     conn.commit()
     conn.close()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(f"/?lang={lang}", status_code=303)
