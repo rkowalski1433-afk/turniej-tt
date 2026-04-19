@@ -501,12 +501,22 @@ def add_match(
     s1b: Optional[int] = Form(None),
     s2a: Optional[int] = Form(None),
     s2b: Optional[int] = Form(None),
-    s3a: Optional[int] = Form(None),
-    s3b: Optional[int] = Form(None),
+    s3a: Optional[str] = Form(None),
+    s3b: Optional[str] = Form(None),
     admin_password: str = Form(""),
     lang: str = Form("pl"),
 ):
     require_admin(admin_password)
+
+    def to_int_or_none(x):
+        return int(x) if x not in (None, "") else None
+
+    s1a = to_int_or_none(s1a)
+    s1b = to_int_or_none(s1b)
+    s2a = to_int_or_none(s2a)
+    s2b = to_int_or_none(s2b)
+    s3a = to_int_or_none(s3a)
+    s3b = to_int_or_none(s3b)
 
     if lang not in ("pl", "de"):
         lang = "pl"
