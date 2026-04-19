@@ -414,15 +414,18 @@ def home(request: Request, lang: str = "pl"):
 
     conn.close()
 
-    return templates.TemplateResponse("index.html", {
+    return templates.TemplateResponse(
+    request=request,
+    name="index.html",
+    context={
         "request": request,
         "players": players,
         "matches": matches,
         "table": table,
         "lang": lang,
         "schedule_days": schedule_days,
-    })
-
+    },
+)
 
 @app.post("/schedule/generate")
 def schedule_generate(
