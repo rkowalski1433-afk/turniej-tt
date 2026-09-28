@@ -1,3 +1,5 @@
 .venv/
 tt.db
 __pycache__/
+.DS_Store
+app_sqlite_backup.py
