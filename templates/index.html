@@ -164,7 +164,14 @@
             <input type="hidden" name="days" value="20">
             <button class="btn btn-success">{{ L.generate_schedule }}</button>
           </form>
-
+<a href="/schedule/download?lang={{ lang }}"
+   class="btn btn-outline-primary mt-2 w-100">
+  {% if lang == "de" %}
+    Spielplan als TXT herunterladen
+  {% else %}
+    Pobierz terminarz jako TXT
+  {% endif %}
+</a>
           <div class="form-text mt-2">
             {{ L.set_points_hint }}
           </div>

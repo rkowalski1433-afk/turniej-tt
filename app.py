@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 import sqlite3
 from pathlib import Path
@@ -426,6 +426,235 @@ def home(request: Request, lang: str = "pl"):
         "schedule_days": schedule_days,
     },
 )
+@app.get("/schedule/download")
+def download_schedule(lang: str = "pl"):
+    if lang not in ("pl", "de"):
+        lang = "pl"
+
+    conn = db()
+
+    players = get_players(conn)
+    schedule_rows = get_schedule(conn)
+    matches = get_matches(conn)
+
+    conn.close()
+
+    # Wyniki rozegranych spotkań
+    played_map = {}
+
+    for match in matches:
+        key = tuple(sorted((match["p1_id"], match["p2_id"])))
+        played_map[key] = match
+
+    lines = []
+
+    # ==========================================
+    # POLSKA WERSJA
+    # ==========================================
+
+    if lang == "pl":
+
+        lines.extend([
+            "TURNIEJ TENISA STOŁOWEGO",
+            "=" * 50,
+            "",
+            "ZASADY",
+            "-" * 50,
+            "",
+            "System rozgrywek: każdy z każdym",
+            "Mecz: do 2 wygranych setów (best of 3)",
+            "",
+            "Punktacja tabeli:",
+            "- zwycięstwo: 2 pkt",
+            "- porażka: 0 pkt",
+            "",
+            "Przy równej liczbie punktów uwzględniane są",
+            "kolejno zwycięstwa, bilans setów oraz małych punktów.",
+            "",
+            "",
+            "ZAWODNICY",
+            "-" * 50,
+        ])
+
+        for i, player in enumerate(players, start=1):
+            lines.append(f"{i}. {player['name']}")
+
+        lines.extend([
+            "",
+            "",
+            "TERMINARZ",
+            "=" * 50,
+        ])
+
+        filename = "terminarz_turnieju.txt"
+
+    # ==========================================
+    # NIEMIECKA WERSJA
+    # ==========================================
+
+    else:
+
+        lines.extend([
+            "TISCHTENNISTURNIER",
+            "=" * 50,
+            "",
+            "REGELN",
+            "-" * 50,
+            "",
+            "Spielsystem: Jeder gegen jeden",
+            "Spiel: 2 Gewinnsätze (Best of 3)",
+            "",
+            "Punktewertung:",
+            "- Sieg: 2 Punkte",
+            "- Niederlage: 0 Punkte",
+            "",
+            "Bei Punktgleichheit werden Siege, Satzverhältnis",
+            "und anschließend die kleinen Punkte berücksichtigt.",
+            "",
+            "",
+            "TEILNEHMER",
+            "-" * 50,
+        ])
+
+        for i, player in enumerate(players, start=1):
+            lines.append(f"{i}. {player['name']}")
+
+        lines.extend([
+            "",
+            "",
+            "SPIELPLAN",
+            "=" * 50,
+        ])
+
+        filename = "spielplan_turnier.txt"
+
+    # ==========================================
+    # TERMINARZ
+    # ==========================================
+
+    current_day = None
+    match_number = 0
+
+    for row in schedule_rows:
+
+        if row["day_no"] != current_day:
+
+            current_day = row["day_no"]
+            match_number = 0
+
+            lines.append("")
+            lines.append("")
+
+            if lang == "pl":
+                lines.append(f"DZIEŃ {current_day}")
+            else:
+                lines.append(f"SPIELTAG {current_day}")
+
+            lines.append("-" * 50)
+
+        match_number += 1
+
+        p1 = row["p1_name"]
+        p2 = row["p2_name"]
+
+        key = tuple(sorted((row["p1_id"], row["p2_id"])))
+
+        played = played_map.get(key)
+
+        if played:
+
+            # Wynik setów
+            if played["p1_id"] == row["p1_id"]:
+                sets1 = played["p1_sets"]
+                sets2 = played["p2_sets"]
+            else:
+                sets1 = played["p2_sets"]
+                sets2 = played["p1_sets"]
+
+            if lang == "pl":
+                lines.append(
+                    f"{match_number}. {p1} - {p2}    Wynik: {sets1}:{sets2}"
+                )
+            else:
+                lines.append(
+                    f"{match_number}. {p1} - {p2}    Ergebnis: {sets1}:{sets2}"
+                )
+
+            # Szczegóły setów
+            if played["sets_detail"]:
+                if lang == "pl":
+                    lines.append(f"   Sety: {played['sets_detail']}")
+                else:
+                    lines.append(f"   Sätze: {played['sets_detail']}")
+
+        else:
+
+            if lang == "pl":
+                lines.append(
+                    f"{match_number}. {p1} - {p2}    Wynik: ___ : ___"
+                )
+            else:
+                lines.append(
+                    f"{match_number}. {p1} - {p2}    Ergebnis: ___ : ___"
+                )
+
+    if not schedule_rows:
+
+        lines.append("")
+
+        if lang == "pl":
+            lines.append("Brak wygenerowanego terminarza.")
+        else:
+            lines.append("Kein Spielplan vorhanden.")
+
+    # ==========================================
+    # PODSUMOWANIE
+    # ==========================================
+
+    lines.extend([
+        "",
+        "",
+        "=" * 50,
+    ])
+
+    total_matches = len(schedule_rows)
+    played_matches = len(matches)
+
+    if lang == "pl":
+
+        lines.extend([
+            "PODSUMOWANIE",
+            "",
+            f"Liczba zawodników: {len(players)}",
+            f"Liczba zaplanowanych spotkań: {total_matches}",
+            f"Rozegrane spotkania: {played_matches}",
+            f"Pozostałe spotkania: {total_matches - played_matches}",
+            "",
+            "Powodzenia!",
+        ])
+
+    else:
+
+        lines.extend([
+            "ZUSAMMENFASSUNG",
+            "",
+            f"Teilnehmer: {len(players)}",
+            f"Geplante Spiele: {total_matches}",
+            f"Gespielte Spiele: {played_matches}",
+            f"Verbleibende Spiele: {total_matches - played_matches}",
+            "",
+            "Viel Erfolg!",
+        ])
+
+    content = "\n".join(lines)
+
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
+    )
 
 @app.post("/schedule/generate")
 def schedule_generate(
